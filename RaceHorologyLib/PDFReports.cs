@@ -1916,18 +1916,19 @@ namespace RaceHorologyLib
       List<RunResultWithPosition> itemsToPrint = new List<RunResultWithPosition>();
       foreach (var obj in rr.GetResultViewProvider().GetView())
       {
-        if (!(obj is RunResultWithPosition item))
+        var rrwpPenalty = obj as PenaltyRunResultWithPosition;
+        if (!(obj is RunResultWithPosition rrwp))
           continue;
 
-        if (item.ResultCode != RunResult.EResultCode.NiZ)
+        var resultCode = rrwpPenalty?.OrgResultCode ?? rrwp.ResultCode;
+        if (resultCode != RunResult.EResultCode.NiZ)
           continue;
 
-        itemsToPrint.Add(item);
+        itemsToPrint.Add(rrwp);
       }
 
       if (itemsToPrint.Count == 0)
         return table;
-
 
       addSubHeaderToTable(table, string.Format("Nicht im Ziel {0}. Durchgang", rr.Run));
 
@@ -1947,13 +1948,15 @@ namespace RaceHorologyLib
       List<RunResultWithPosition> itemsToPrint = new List<RunResultWithPosition>();
       foreach (var obj in rr.GetResultViewProvider().GetView())
       {
-        if (!(obj is RunResultWithPosition item))
+        var rrwpPenalty = obj as PenaltyRunResultWithPosition;
+        if (!(obj is RunResultWithPosition rrwp))
           continue;
 
-        if (item.ResultCode != RunResult.EResultCode.DIS)
+        var resultCode = rrwpPenalty?.OrgResultCode ?? rrwp.ResultCode;
+        if (resultCode != RunResult.EResultCode.DIS)
           continue;
 
-        itemsToPrint.Add(item);
+        itemsToPrint.Add(rrwp);
       }
 
       if (itemsToPrint.Count == 0)
@@ -2000,7 +2003,45 @@ namespace RaceHorologyLib
 
       return table;
     }
+
+    protected virtual Table addPenaltyTable(Table table, RaceRun rr)
+    {
+      if (rr.GetResultViewProvider() is PenaltyRaceRunResultViewProvider rvp)
+      {
+        List<PenaltyRunResultWithPosition> itemsToPrint = new List<PenaltyRunResultWithPosition>();
+        foreach (var obj in rvp.GetView())
+        {
+          if (!(obj is PenaltyRunResultWithPosition item))
+            continue;
+
+          if (!item.PenaltyApplied)
+            continue;
+
+          itemsToPrint.Add(item);
+        }
+
+        if (itemsToPrint.Count == 0)
+          return table;
+
+        addSubHeaderToTable(table, string.Format("Anwendung der Penaltyzeit im {0}. Durchgang", rr.Run));
+
+        int i = 0;
+        foreach (var item in itemsToPrint)
+        {
+          var text = string.Format("{0} → {1}",
+            (string)_timeConverter.Convert(new object[] { item.OrgRuntime, item.OrgResultCode }, typeof(string), null, null),
+            (string)_timeConverter.Convert(new object[] { item.Runtime, item.ResultCode }, typeof(string), null, null)
+            );
+          addLineToTable(table, item, text, i);
+          //i++;
+        }
+
+      }
+      return table;
+    }
+
   }
+
 
   public class RaceRunResultReport : ResultReport
   {
@@ -2218,6 +2259,7 @@ namespace RaceHorologyLib
       addNotStartedTable(table, _raceRun);
       addNotFinishedPart(table, _raceRun);
       addDisqualifiedTable(table, _raceRun);
+      addPenaltyTable(table, _raceRun);
 
       return table;
     }
@@ -2458,6 +2500,7 @@ namespace RaceHorologyLib
         addNotStartedTable(table, _race.GetRun(i));
         addNotFinishedPart(table, _race.GetRun(i));
         addDisqualifiedTable(table, _race.GetRun(i));
+        addPenaltyTable(table, _race.GetRun(i));
       }
 
       return table;
