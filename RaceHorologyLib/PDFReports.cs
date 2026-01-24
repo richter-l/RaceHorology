@@ -1902,6 +1902,7 @@ namespace RaceHorologyLib
 
   public abstract class ResultReport : PDFReport
   {
+    protected ResultTimeAndCodeConverter _timeConverter = new ResultTimeAndCodeConverter();
 
     protected ResultReport(Race race) : base(race)
     { }
@@ -2004,8 +2005,6 @@ namespace RaceHorologyLib
   public class RaceRunResultReport : ResultReport
   {
     RaceRun _raceRun;
-
-    ResultTimeAndCodeConverter _timeConverter = new ResultTimeAndCodeConverter();
     PercentageConverter _percentageConverter = new PercentageConverter(false);
 
 
@@ -2227,10 +2226,7 @@ namespace RaceHorologyLib
 
   public class RaceResultReport : ResultReport
   {
-
-    ResultTimeAndCodeConverter _timeConverter = new ResultTimeAndCodeConverter();
     PercentageConverter _percentageConverter = new PercentageConverter(false);
-
 
     public RaceResultReport(Race race) : base(race)
     {
@@ -3251,7 +3247,6 @@ namespace RaceHorologyLib
 
   public class TeamRaceResultReport : ResultReport
   {
-    ResultTimeAndCodeConverter _timeConverter = new ResultTimeAndCodeConverter();
 
     public TeamRaceResultReport(Race race) : base(race)
     {
