@@ -517,9 +517,6 @@ namespace RaceHorologyLib
 
       writeElement("Yearofbirth", participant.Participant.Year.ToString());
 
-      if (!string.IsNullOrEmpty(participant.Club))
-        writeElement("Clubname", participant.Club);
-
       _writer.WriteEndElement();
     }
 
