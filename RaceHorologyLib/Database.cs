@@ -1012,6 +1012,11 @@ namespace RaceHorologyLib
               case 45: props.TempStart = value; break;
               case 46: props.TempFinish = value; break;
 
+              case 47: props.AssistantReferee.Name = value; break;
+              case 48: props.AssistantReferee.Club = value; break;
+              case 49: props.RaceNation = value; break;
+              case 50: props.FISCategory = value; break;
+
               default:
                 break;
             }
@@ -1110,6 +1115,12 @@ namespace RaceHorologyLib
       storeRacePropertyInternal(race, 44, props.Snow);
       storeRacePropertyInternal(race, 45, props.TempStart);
       storeRacePropertyInternal(race, 46, props.TempFinish);
+
+      // FIS-specific fields
+      storeRacePropertyInternal(race, 47, props.AssistantReferee.Name);
+      storeRacePropertyInternal(race, 48, props.AssistantReferee.Club);
+      storeRacePropertyInternal(race, 49, props.RaceNation);
+      storeRacePropertyInternal(race, 50, props.FISCategory);
     }
 
 
