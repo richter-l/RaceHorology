@@ -1016,6 +1016,7 @@ namespace RaceHorologyLib
               case 48: props.AssistantReferee.Club = value; break;
               case 49: props.RaceNation = value; break;
               case 50: props.FISCategory = value; break;
+              case 51: props.TDNumber = value; break;
 
               default:
                 break;
@@ -1121,6 +1122,7 @@ namespace RaceHorologyLib
       storeRacePropertyInternal(race, 48, props.AssistantReferee.Club);
       storeRacePropertyInternal(race, 49, props.RaceNation);
       storeRacePropertyInternal(race, 50, props.FISCategory);
+      storeRacePropertyInternal(race, 51, props.TDNumber);
     }
 
 

@@ -71,14 +71,14 @@ namespace RaceHorologyLibTest
       model.GetRace(0).AdditionalProperties = raceProps;
 
       xmlData = new MemoryStream();
-      Assert.AreEqual("missing racedate",
-        Assert.ThrowsException<FISExportException>(() => fisExport.ExportXML(xmlData, model.GetRace(0))).Message);
-      raceProps.DateResultList = DateTime.Today;
-
-      xmlData = new MemoryStream();
       Assert.AreEqual("missing raceid",
         Assert.ThrowsException<FISExportException>(() => fisExport.ExportXML(xmlData, model.GetRace(0))).Message);
       raceProps.RaceNumber = "1234";
+
+      xmlData = new MemoryStream();
+      Assert.AreEqual("missing racedate",
+        Assert.ThrowsException<FISExportException>(() => fisExport.ExportXML(xmlData, model.GetRace(0))).Message);
+      raceProps.DateResultList = DateTime.Today;
 
       xmlData = new MemoryStream();
       Assert.AreEqual("missing raceorganizer",
@@ -86,14 +86,19 @@ namespace RaceHorologyLibTest
       raceProps.Organizer = "WSV Glonn";
 
       xmlData = new MemoryStream();
+      Assert.AreEqual("missing raceplace",
+        Assert.ThrowsException<FISExportException>(() => fisExport.ExportXML(xmlData, model.GetRace(0))).Message);
+      raceProps.Location = "Test Location";
+
+      xmlData = new MemoryStream();
       Assert.AreEqual("missing racename",
         Assert.ThrowsException<FISExportException>(() => fisExport.ExportXML(xmlData, model.GetRace(0))).Message);
       raceProps.Description = "Test Race";
 
       xmlData = new MemoryStream();
-      Assert.AreEqual("missing raceplace",
+      Assert.AreEqual("missing racejury TechnicalDelegate",
         Assert.ThrowsException<FISExportException>(() => fisExport.ExportXML(xmlData, model.GetRace(0))).Message);
-      raceProps.Location = "Test Location";
+      raceProps.TrainerRepresentative = new AdditionalRaceProperties.Person { Name = "TD Person", Club = "Club" };
 
       xmlData = new MemoryStream();
       Assert.AreEqual("missing racejury Chiefrace",
@@ -104,11 +109,6 @@ namespace RaceHorologyLibTest
       Assert.AreEqual("missing racejury Referee",
         Assert.ThrowsException<FISExportException>(() => fisExport.ExportXML(xmlData, model.GetRace(0))).Message);
       raceProps.RaceReferee = new AdditionalRaceProperties.Person { Name = "Race Referee", Club = "Club" };
-
-      xmlData = new MemoryStream();
-      Assert.AreEqual("missing racejury TD",
-        Assert.ThrowsException<FISExportException>(() => fisExport.ExportXML(xmlData, model.GetRace(0))).Message);
-      raceProps.TrainerRepresentative = new AdditionalRaceProperties.Person { Name = "TD Person", Club = "Club" };
 
       xmlData = new MemoryStream();
       Assert.AreEqual("missing coarsename",
@@ -126,6 +126,11 @@ namespace RaceHorologyLibTest
       raceProps.RaceRun1.Turns = 9;
 
       xmlData = new MemoryStream();
+      Assert.AreEqual("missing courselength",
+        Assert.ThrowsException<FISExportException>(() => fisExport.ExportXML(xmlData, model.GetRace(0))).Message);
+      raceProps.CoarseLength = 1000;
+
+      xmlData = new MemoryStream();
       Assert.AreEqual("missing startaltitude",
         Assert.ThrowsException<FISExportException>(() => fisExport.ExportXML(xmlData, model.GetRace(0))).Message);
       raceProps.StartHeight = 1000;
@@ -134,11 +139,6 @@ namespace RaceHorologyLibTest
       Assert.AreEqual("missing finishaltitude",
         Assert.ThrowsException<FISExportException>(() => fisExport.ExportXML(xmlData, model.GetRace(0))).Message);
       raceProps.FinishHeight = 100;
-
-      xmlData = new MemoryStream();
-      Assert.AreEqual("missing courselength",
-        Assert.ThrowsException<FISExportException>(() => fisExport.ExportXML(xmlData, model.GetRace(0))).Message);
-      raceProps.CoarseLength = 1000;
 
       xmlData = new MemoryStream();
       Assert.AreEqual("missing coursesetter",
@@ -201,32 +201,37 @@ namespace RaceHorologyLibTest
 
       string s = exportToXML(model.GetRace(0));
 
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/Raceheader/Racedate", s, DateTime.Today.ToString("yyyy-MM-dd"));
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/Raceheader/Gender", s, "A");
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/Raceheader/Raceid", s, "1234");
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/Raceheader/Raceorganizer", s, "WSV Glonn");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/Raceheader/@Sector", s, "AL");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/Raceheader/@Gender", s, "A");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/Raceheader/Racedate/Day", s, DateTime.Today.Day.ToString());
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/Raceheader/Racedate/Month", s, DateTime.Today.Month.ToString());
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/Raceheader/Racedate/Year", s, DateTime.Today.Year.ToString());
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/Raceheader/Codex", s, "1234");
       XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/Raceheader/Discipline", s, "GS");
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/Raceheader/Racename", s, "Test Race");
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/Raceheader/Raceplace", s, "Test Location");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/Raceheader/Eventname", s, "Test Race");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/Raceheader/Place", s, "Test Location");
 
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_raceinfo/Jury[@Function='Chiefrace']/Jurylastname", s, "Manager");
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_raceinfo/Jury[@Function='Chiefrace']/Juryfirstname", s, "Race");
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_raceinfo/Jury[@Function='Referee']/Jurylastname", s, "Referee");
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_raceinfo/Jury[@Function='Referee']/Juryfirstname", s, "Race");
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_raceinfo/Jury[@Function='TD']/Jurylastname", s, "Rep");
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_raceinfo/Jury[@Function='TD']/Juryfirstname", s, "T.");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_race/AL_raceinfo/Jury[@Function='TechnicalDelegate']/Lastname", s, "Rep");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_race/AL_raceinfo/Jury[@Function='TechnicalDelegate']/Firstname", s, "T.");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_race/AL_raceinfo/Jury[@Function='Chiefrace']/Lastname", s, "Manager");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_race/AL_raceinfo/Jury[@Function='Chiefrace']/Firstname", s, "Race");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_race/AL_raceinfo/Jury[@Function='Referee']/Lastname", s, "Referee");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_race/AL_raceinfo/Jury[@Function='Referee']/Firstname", s, "Race");
 
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_raceinfo/Runinfo[1]/Coursename", s, "Kurs 1");
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_raceinfo/Runinfo[1]/Numberofgates", s, "10");
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_raceinfo/Runinfo[1]/Numberofturninggates", s, "9");
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_raceinfo/Runinfo[1]/Startaltitude", s, "1000");
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_raceinfo/Runinfo[1]/Finishaltitude", s, "100");
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_raceinfo/Runinfo[1]/Courselength", s, "1000");
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_raceinfo/Runinfo[1]/Coursesetter/Lastname", s, "Flossmann");
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_raceinfo/Runinfo[1]/Coursesetter/Firstname", s, "Sven");
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_raceinfo/Runinfo[1]/Coursesetter/Nation", s, "WSV Glonn");
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_raceinfo/Runinfo[1]/Forerunner[1]/Lastname", s, "Runner");
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_raceinfo/Runinfo[1]/Forerunner[1]/Firstname", s, "F.");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_race/AL_raceinfo/Runinfo[1]/Course/Name", s, "Kurs 1");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_race/AL_raceinfo/Runinfo[1]/Course/Gates", s, "10");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_race/AL_raceinfo/Runinfo[1]/Course/Turninggates", s, "9");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_race/AL_raceinfo/Runinfo[1]/Course/Startelev", s, "1000");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_race/AL_raceinfo/Runinfo[1]/Course/Finishelev", s, "100");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_race/AL_raceinfo/Runinfo[1]/Course/Length", s, "1000");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_race/AL_raceinfo/Runinfo[1]/Course/Coursesetter/Lastname", s, "Flossmann");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_race/AL_raceinfo/Runinfo[1]/Course/Coursesetter/Firstname", s, "Sven");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_race/AL_raceinfo/Runinfo[1]/Course/Coursesetter/Nation", s, "WSV Glonn");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_race/AL_raceinfo/Runinfo[1]/Course/Forerunner[1]/Lastname", s, "Runner");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_race/AL_raceinfo/Runinfo[1]/Course/Forerunner[1]/Firstname", s, "F.");
+
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_race/AL_raceinfo/Softwarename", s, "RaceHorology");
+      Assert.IsTrue(s.Contains("<Timingby>"));
     }
 
 
@@ -278,6 +283,18 @@ namespace RaceHorologyLibTest
 
 
     [TestMethod]
+    public void VerifyXML_TDNumber()
+    {
+      var model = createTestDataModel1Race1Run();
+      fillMandatoryFields(model);
+      model.GetRace(0).AdditionalProperties.TDNumber = "1047";
+
+      string s = exportToXML(model.GetRace(0));
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_race/AL_raceinfo/Jury[@Function='TechnicalDelegate']/Number", s, "1047");
+    }
+
+
+    [TestMethod]
     public void VerifyXML_ResultsWithRuns()
     {
       TestDataGenerator tg = new TestDataGenerator();
@@ -298,17 +315,17 @@ namespace RaceHorologyLibTest
 
       string s = exportToXML(tg.Model.GetRace(0));
 
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_classified/AL_ranked[@Status='QLF']/Bib", s, "1");
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_classified/AL_ranked/Timerun1", s, "00:02.00");
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_classified/AL_ranked/Timerun2", s, "00:03.00");
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_classified/AL_ranked/Totaltime", s, "00:05.00");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_race/AL_classified/AL_ranked[@Status='QLF']/Bib", s, "1");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_race/AL_classified/AL_ranked/AL_result/Timerun1", s, "02.00");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_race/AL_classified/AL_ranked/AL_result/Timerun2", s, "03.00");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_race/AL_classified/AL_ranked/AL_result/Totaltime", s, "05.00");
 
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_notclassified/AL_notranked[@Status='DNF']/Bib[text()='2']/../Run", s, "2");
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_notclassified/AL_notranked[@Status='DSQ']/Bib[text()='3']/../Run", s, "2");
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_notclassified/AL_notranked[@Status='DNF']/Bib[text()='4']/../Run", s, "1");
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_notclassified/AL_notranked[@Status='DNS']/Bib[text()='5']/../Run", s, "1");
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_notclassified/AL_notranked[@Status='DSQ']/Bib[text()='6']/../Run", s, "1");
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_notclassified/AL_notranked[@Status='DSQ']/Bib[text()='6']/../Reason", s, "Tor 2");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_race/AL_notclassified/AL_notranked[@Status='DNF']/Bib[text()='2']/../Run", s, "2");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_race/AL_notclassified/AL_notranked[@Status='DSQ']/Bib[text()='3']/../Run", s, "2");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_race/AL_notclassified/AL_notranked[@Status='DNF']/Bib[text()='4']/../Run", s, "1");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_race/AL_notclassified/AL_notranked[@Status='DNS']/Bib[text()='5']/../Run", s, "1");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_race/AL_notclassified/AL_notranked[@Status='DSQ']/Bib[text()='6']/../Run", s, "1");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_race/AL_notclassified/AL_notranked[@Status='DSQ']/Bib[text()='6']/../Reason", s, "Tor 2");
     }
 
 
@@ -337,7 +354,22 @@ namespace RaceHorologyLibTest
 
       string s = exportToXML(model.GetRace(0));
 
-      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_raceinfo/Fvalue", s, "720");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/AL_race/AL_raceinfo/Fvalue", s, "720");
+    }
+
+
+    [TestMethod]
+    public void VerifyXML_RacedateStructure()
+    {
+      var model = createTestDataModel1Race1Run();
+      fillMandatoryFields(model);
+      model.GetRace(0).AdditionalProperties.DateResultList = new DateTime(2026, 4, 26);
+
+      string s = exportToXML(model.GetRace(0));
+
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/Raceheader/Racedate/Day", s, "26");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/Raceheader/Racedate/Month", s, "4");
+      XmlAssertion.AssertXPathEvaluatesTo("/Fisresults/Raceheader/Racedate/Year", s, "2026");
     }
 
 
@@ -371,9 +403,9 @@ namespace RaceHorologyLibTest
       raceProps.Description = "Test Race";
       raceProps.Location = "Test Location";
 
+      raceProps.TrainerRepresentative = new AdditionalRaceProperties.Person { Name = "T.Rep", Club = "Club" };
       raceProps.RaceManager = new AdditionalRaceProperties.Person { Name = "Race Manager", Club = "Club" };
       raceProps.RaceReferee = new AdditionalRaceProperties.Person { Name = "Referee, Race", Club = "Club" };
-      raceProps.TrainerRepresentative = new AdditionalRaceProperties.Person { Name = "T.Rep", Club = "Club" };
 
       raceProps.CoarseName = "Kurs 1";
       raceProps.StartHeight = 1000;

@@ -74,7 +74,7 @@ namespace RaceHorologyLib
           return "Rennleiter fehlt";
         case "missing racejury Referee":
           return "Schiedsrichter fehlt";
-        case "missing racejury TD":
+        case "missing racejury TechnicalDelegate":
           return "Trainervertreter/TD fehlt";
         case "missing racejury Assistantreferee":
           return "Schiedsrichterassistent fehlt";
@@ -184,31 +184,25 @@ namespace RaceHorologyLib
     {
       _writer.WriteStartElement("Fisresults");
       writeRaceheader(race);
+      _writer.WriteStartElement("AL_race");
       writeALRaceinfo(race);
       writeRaceResults(race);
-      _writer.WriteEndElement();
+      _writer.WriteEndElement(); // AL_race
+      _writer.WriteEndElement(); // Fisresults
     }
 
 
     void writeRaceheader(Race race)
     {
       _writer.WriteStartElement("Raceheader");
-
-      if (race.DateResultList == null)
-        throw new FISExportException("missing racedate");
-      writeElement("Racedate", race.DateResultList?.ToString("yyyy-MM-dd"));
-
-      writeElement("Gender", "A");
+      _writer.WriteAttributeString("Sector", "AL");
+      _writer.WriteAttributeString("Gender", determineGender(race));
 
       writeElement("Season", race.DateResultList?.AddMonths(3).ToString("yyyy"));
 
       if (string.IsNullOrWhiteSpace(race.RaceNumber))
         throw new FISExportException("missing raceid");
-      writeElement("Raceid", race.RaceNumber);
-
-      if (string.IsNullOrWhiteSpace(race.AdditionalProperties?.Organizer))
-        throw new FISExportException("missing raceorganizer");
-      writeElement("Raceorganizer", race.AdditionalProperties?.Organizer);
+      writeElement("Codex", race.RaceNumber);
 
       if (!string.IsNullOrWhiteSpace(race.AdditionalProperties?.RaceNation))
         writeElement("Nation", race.AdditionalProperties.RaceNation);
@@ -218,27 +212,31 @@ namespace RaceHorologyLib
       if (!string.IsNullOrWhiteSpace(race.AdditionalProperties?.FISCategory))
         writeElement("Category", race.AdditionalProperties.FISCategory);
 
-      if (string.IsNullOrWhiteSpace(race.Description))
-        throw new FISExportException("missing racename");
-      writeElement("Racename", race.Description);
+      if (race.DateResultList == null)
+        throw new FISExportException("missing racedate");
+      writeRacedate(race.DateResultList.Value);
+
+      if (string.IsNullOrWhiteSpace(race.AdditionalProperties?.Organizer))
+        throw new FISExportException("missing raceorganizer");
 
       if (string.IsNullOrWhiteSpace(race.AdditionalProperties?.Location))
         throw new FISExportException("missing raceplace");
-      writeElement("Raceplace", race.AdditionalProperties?.Location);
+      writeElement("Place", race.AdditionalProperties?.Location);
 
-      writeElement("Timing", string.IsNullOrWhiteSpace(race.TimingDevice) ? "Race Horology" : race.TimingDevice);
+      if (string.IsNullOrWhiteSpace(race.Description))
+        throw new FISExportException("missing racename");
+      writeElement("Eventname", race.Description);
 
-      if (!string.IsNullOrEmpty(race.AdditionalProperties?.Analyzer.Club) && !string.IsNullOrEmpty(race.AdditionalProperties?.Analyzer.Name))
-        writeElement("Dataprocessing_by", string.Format("{0}, {1}", race.AdditionalProperties?.Analyzer.Name, race.AdditionalProperties?.Analyzer.Club));
-      else if (!string.IsNullOrEmpty(race.AdditionalProperties?.Analyzer.Club))
-        writeElement("Dataprocessing_by", race.AdditionalProperties?.Analyzer.Club);
-      else if (!string.IsNullOrEmpty(race.AdditionalProperties?.Analyzer.Name))
-        writeElement("Dataprocessing_by", race.AdditionalProperties?.Analyzer.Name);
+      _writer.WriteEndElement();
+    }
 
-      string software = getSoftware();
-      if (software != null)
-        writeElement("Software", software);
 
+    void writeRacedate(DateTime date)
+    {
+      _writer.WriteStartElement("Racedate");
+      writeElement("Day", date.Day.ToString());
+      writeElement("Month", date.Month.ToString());
+      writeElement("Year", date.Year.ToString());
       _writer.WriteEndElement();
     }
 
@@ -261,6 +259,10 @@ namespace RaceHorologyLib
         }
       }
 
+      if (race.AdditionalProperties?.TrainerRepresentative == null || ((AdditionalRaceProperties.Person)race.AdditionalProperties?.TrainerRepresentative).IsEmpty())
+        throw new FISExportException("missing racejury TechnicalDelegate");
+      writeJuryTD(race.AdditionalProperties?.TrainerRepresentative, race.AdditionalProperties?.TDNumber);
+
       if (race.AdditionalProperties?.RaceManager == null || ((AdditionalRaceProperties.Person)race.AdditionalProperties?.RaceManager).IsEmpty())
         throw new FISExportException("missing racejury Chiefrace");
       writeJury("Chiefrace", race.AdditionalProperties?.RaceManager);
@@ -277,13 +279,24 @@ namespace RaceHorologyLib
       if (race.AdditionalProperties?.AssistantReferee != null && !((AdditionalRaceProperties.Person)race.AdditionalProperties?.AssistantReferee).IsEmpty())
         writeJury("Assistantreferee", race.AdditionalProperties?.AssistantReferee);
 
-      if (race.AdditionalProperties?.TrainerRepresentative == null || ((AdditionalRaceProperties.Person)race.AdditionalProperties?.TrainerRepresentative).IsEmpty())
-        throw new FISExportException("missing racejury TD");
-      writeJury("TD", race.AdditionalProperties?.TrainerRepresentative);
-
       writeRuninfo(race.GetRun(0), race.AdditionalProperties?.RaceRun1);
       if (race.GetMaxRun() > 1)
         writeRuninfo(race.GetRun(1), race.AdditionalProperties?.RaceRun2);
+
+      writeElement("Timingby", string.IsNullOrWhiteSpace(race.TimingDevice) ? "Race Horology" : race.TimingDevice);
+
+      if (!string.IsNullOrEmpty(race.AdditionalProperties?.Analyzer.Club) && !string.IsNullOrEmpty(race.AdditionalProperties?.Analyzer.Name))
+        writeElement("Dataprocessingby", string.Format("{0}, {1}", race.AdditionalProperties?.Analyzer.Name, race.AdditionalProperties?.Analyzer.Club));
+      else if (!string.IsNullOrEmpty(race.AdditionalProperties?.Analyzer.Club))
+        writeElement("Dataprocessingby", race.AdditionalProperties?.Analyzer.Club);
+      else if (!string.IsNullOrEmpty(race.AdditionalProperties?.Analyzer.Name))
+        writeElement("Dataprocessingby", race.AdditionalProperties?.Analyzer.Name);
+
+      writeElement("Softwarename", "RaceHorology");
+
+      string gitHash = getGitHash();
+      if (!string.IsNullOrEmpty(gitHash))
+        writeElement("Softwareversion", gitHash);
 
       _writer.WriteEndElement();
     }
@@ -296,10 +309,27 @@ namespace RaceHorologyLib
 
       _writer.WriteStartElement("Jury");
       _writer.WriteAttributeString("Function", function);
-      writeElement("Jurylastname", lastname);
-      writeElement("Juryfirstname", firstname);
+      writeElement("Lastname", lastname);
+      writeElement("Firstname", firstname);
       if (!string.IsNullOrEmpty(person?.Club))
-        writeElement("Jurynation", person.Club);
+        writeElement("Nation", person.Club);
+      _writer.WriteEndElement();
+    }
+
+
+    void writeJuryTD(AdditionalRaceProperties.Person person, string tdNumber)
+    {
+      string lastname, firstname;
+      DSVExport.guessLastAndFirstname(person?.Name, out lastname, out firstname);
+
+      _writer.WriteStartElement("Jury");
+      _writer.WriteAttributeString("Function", "TechnicalDelegate");
+      if (!string.IsNullOrEmpty(tdNumber))
+        writeElement("Number", tdNumber);
+      writeElement("Lastname", lastname);
+      writeElement("Firstname", firstname);
+      if (!string.IsNullOrEmpty(person?.Club))
+        writeElement("Nation", person.Club);
       _writer.WriteEndElement();
     }
 
@@ -307,34 +337,36 @@ namespace RaceHorologyLib
     void writeRuninfo(RaceRun raceRun, AdditionalRaceProperties.RaceRunProperties raceRunProperties)
     {
       _writer.WriteStartElement("Runinfo");
-      _writer.WriteAttributeString("Run", raceRun.Run.ToString());
+      _writer.WriteAttributeString("no", raceRun.Run.ToString());
+
+      _writer.WriteStartElement("Course");
 
       if (string.IsNullOrEmpty(raceRun.GetRace().AdditionalProperties?.CoarseName))
         throw new FISExportException("missing coarsename");
-      writeElement("Coursename", raceRun.GetRace().AdditionalProperties?.CoarseName);
+      writeElement("Name", raceRun.GetRace().AdditionalProperties?.CoarseName);
 
       if (!string.IsNullOrEmpty(raceRun.GetRace().AdditionalProperties?.CoarseHomologNo))
-        writeElement("Homologationnumber", raceRun.GetRace().AdditionalProperties.CoarseHomologNo);
+        writeElement("Homologation", raceRun.GetRace().AdditionalProperties.CoarseHomologNo);
 
       if (raceRunProperties.Gates <= 0)
         throw new FISExportException("missing number_of_gates");
-      writeElement("Numberofgates", raceRunProperties.Gates.ToString());
+      writeElement("Gates", raceRunProperties.Gates.ToString());
 
       if (raceRunProperties.Turns <= 0)
         throw new FISExportException("missing number_of_turninggates");
-      writeElement("Numberofturninggates", raceRunProperties.Turns.ToString());
-
-      if (raceRun.GetRace().AdditionalProperties?.StartHeight <= 0)
-        throw new FISExportException("missing startaltitude");
-      writeElement("Startaltitude", raceRun.GetRace().AdditionalProperties?.StartHeight.ToString());
-
-      if (raceRun.GetRace().AdditionalProperties?.FinishHeight <= 0)
-        throw new FISExportException("missing finishaltitude");
-      writeElement("Finishaltitude", raceRun.GetRace().AdditionalProperties?.FinishHeight.ToString());
+      writeElement("Turninggates", raceRunProperties.Turns.ToString());
 
       if (raceRun.GetRace().AdditionalProperties?.CoarseLength <= 0)
         throw new FISExportException("missing courselength");
-      writeElement("Courselength", raceRun.GetRace().AdditionalProperties.CoarseLength.ToString());
+      writeElement("Length", raceRun.GetRace().AdditionalProperties.CoarseLength.ToString());
+
+      if (raceRun.GetRace().AdditionalProperties?.StartHeight <= 0)
+        throw new FISExportException("missing startaltitude");
+      writeElement("Startelev", raceRun.GetRace().AdditionalProperties?.StartHeight.ToString());
+
+      if (raceRun.GetRace().AdditionalProperties?.FinishHeight <= 0)
+        throw new FISExportException("missing finishaltitude");
+      writeElement("Finishelev", raceRun.GetRace().AdditionalProperties?.FinishHeight.ToString());
 
       writeCoursesetter(raceRunProperties.CoarseSetter);
 
@@ -347,9 +379,11 @@ namespace RaceHorologyLib
       if (!string.IsNullOrWhiteSpace(raceRunProperties.Forerunner3.Name))
         writeForerunner(3, raceRunProperties.Forerunner3);
 
+      _writer.WriteEndElement(); // Course
+
       writeElement("Starttime", raceRunProperties.StartTime);
 
-      _writer.WriteEndElement();
+      _writer.WriteEndElement(); // Runinfo
     }
 
 
@@ -422,17 +456,19 @@ namespace RaceHorologyLib
         writeElement("Bib", rri.Participant.StartNumber.ToString());
         writeCompetitor(rri.Participant);
 
+        _writer.WriteStartElement("AL_result");
         foreach (var x in rri.SubResults.OrderBy(k => k.Key))
         {
           writeElement("Timerun" + x.Key, formatTime(x.Value.Runtime));
         }
-
         writeElement("Totaltime", formatTime(rri.TotalTime));
 
         if (_writePoints && rri.Points >= 0)
           writeElement("Racepoints", rri.Points.ToString("F2", CultureInfo.InvariantCulture));
 
-        _writer.WriteEndElement();
+        _writer.WriteEndElement(); // AL_result
+
+        _writer.WriteEndElement(); // AL_ranked
       }
 
       _writer.WriteEndElement();
@@ -452,11 +488,11 @@ namespace RaceHorologyLib
         _writer.WriteStartElement("AL_notranked");
         _writer.WriteAttributeString("Status", status);
 
-        writeElement("Bib", rri.Participant.StartNumber.ToString());
-        writeCompetitor(rri.Participant);
-
         if (failedRun > 0)
           writeElement("Run", failedRun.ToString());
+
+        writeElement("Bib", rri.Participant.StartNumber.ToString());
+        writeCompetitor(rri.Participant);
 
         if (!string.IsNullOrWhiteSpace(rri.DisqualText))
           writeElement("Reason", rri.DisqualText);
@@ -477,11 +513,12 @@ namespace RaceHorologyLib
       writeElement("Lastname", participant.Name);
       writeElement("Firstname", participant.Firstname);
 
-      writeElement("Year", participant.Participant.Year.ToString());
-
       writeElement("Nation", participant.Nation);
 
-      writeElement("Club", participant.Club);
+      writeElement("Yearofbirth", participant.Participant.Year.ToString());
+
+      if (!string.IsNullOrEmpty(participant.Club))
+        writeElement("Clubname", participant.Club);
 
       _writer.WriteEndElement();
     }
@@ -497,7 +534,13 @@ namespace RaceHorologyLib
 
     static string formatTime(TimeSpan? time)
     {
-      return time?.ToString(@"mm\:ss\.ff");
+      if (time == null)
+        return "";
+
+      if (time.Value.Hours > 0 || time.Value.Minutes >= 1)
+        return time.Value.ToString(@"m\:ss\.ff");
+
+      return time.Value.ToString(@"ss\.ff");
     }
 
 
@@ -515,6 +558,31 @@ namespace RaceHorologyLib
         return "SG";
 
       throw new FISExportException("not supported racetype");
+    }
+
+
+    static string determineGender(Race race)
+    {
+      bool hasMale = false;
+      bool hasFemale = false;
+
+      foreach (var participant in race.GetParticipants())
+      {
+        if (participant.Sex == null)
+          continue;
+
+        char cat = participant.Sex.Name;
+        if (cat == 'M' || cat == 'm')
+          hasMale = true;
+        else if (cat == 'W' || cat == 'w' || cat == 'L' || cat == 'l')
+          hasFemale = true;
+      }
+
+      if (hasMale && !hasFemale)
+        return "M";
+      if (hasFemale && !hasMale)
+        return "W";
+      return "A";
     }
 
 
@@ -552,20 +620,34 @@ namespace RaceHorologyLib
     }
 
 
-    string getSoftware()
+    static string getGitHash()
     {
-      Assembly assembly = Assembly.GetEntryAssembly();
-      if (assembly == null)
-        assembly = Assembly.GetExecutingAssembly();
-
-      if (assembly != null)
+      try
       {
-        FileVersionInfo fvi = FileVersionInfo.GetVersionInfo(assembly.Location);
-        var productName = fvi.ProductName;
-        var productVersion = fvi.ProductVersion;
-
-        return string.Format("{0} {1}", productName, productVersion);
+        var process = new Process();
+        process.StartInfo.FileName = "git";
+        process.StartInfo.Arguments = "rev-parse --short HEAD";
+        process.StartInfo.UseShellExecute = false;
+        process.StartInfo.RedirectStandardOutput = true;
+        process.StartInfo.CreateNoWindow = true;
+        process.Start();
+        string hash = process.StandardOutput.ReadToEnd().Trim();
+        process.WaitForExit();
+        if (process.ExitCode == 0 && !string.IsNullOrEmpty(hash))
+          return hash;
       }
+      catch { }
+
+      try
+      {
+        Assembly assembly = Assembly.GetEntryAssembly() ?? Assembly.GetExecutingAssembly();
+        if (assembly != null)
+        {
+          FileVersionInfo fvi = FileVersionInfo.GetVersionInfo(assembly.Location);
+          return fvi.ProductVersion;
+        }
+      }
+      catch { }
 
       return null;
     }
