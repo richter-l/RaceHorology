@@ -409,7 +409,7 @@ namespace RaceHorologyLib
         try
         {
           _serialPort.Open();
-          _serialPort.Write("\u0013R 0A000000000006000000000000000000000000100T\r");
+          //_serialPort.Write("\u0013R 0A000000000006000000000000000000000000100T\r");
           _serialPort.Close();
         }
         catch (System.IO.IOException) { };
