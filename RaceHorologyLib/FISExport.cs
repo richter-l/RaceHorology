@@ -35,14 +35,12 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
-using System.Reflection;
 using System.Text;
 using System.Xml;
 
@@ -107,7 +105,6 @@ namespace RaceHorologyLib
   {
     protected XmlWriterSettings _xmlSettings;
     protected XmlWriter _writer;
-    protected bool _writePoints;
 
     public FISExport()
     {
@@ -168,8 +165,6 @@ namespace RaceHorologyLib
 
     public void ExportXML(Stream output, Race race)
     {
-      _writePoints = race.RaceConfiguration.ActiveFields.Contains("Points");
-
       _writer = XmlWriter.Create(output, _xmlSettings);
 
       _writer.WriteStartDocument();
@@ -293,10 +288,6 @@ namespace RaceHorologyLib
         writeElement("Dataprocessingby", race.AdditionalProperties?.Analyzer.Name);
 
       writeElement("Softwarename", "RaceHorology");
-
-      string gitHash = getGitHash();
-      if (!string.IsNullOrEmpty(gitHash))
-        writeElement("Softwareversion", gitHash);
 
       _writer.WriteEndElement();
     }
@@ -438,12 +429,13 @@ namespace RaceHorologyLib
           notClassified.Add(item);
       }
 
-      writeALClassified(classified);
+      FISRaceCalculation fisCalc = (race.GetResultViewProvider() as FISRaceResultViewProvider)?.GetFISRaceCalculation();
+      writeALClassified(classified, fisCalc);
       writeALNotClassified(notClassified);
     }
 
 
-    void writeALClassified(List<RaceResultItem> classified)
+    void writeALClassified(List<RaceResultItem> classified, FISRaceCalculation fisCalc)
     {
       _writer.WriteStartElement("AL_classified");
 
@@ -463,8 +455,9 @@ namespace RaceHorologyLib
         }
         writeElement("Totaltime", formatTime(rri.TotalTime));
 
-        if (_writePoints && rri.Points >= 0)
-          writeElement("Racepoints", rri.Points.ToString("F2", CultureInfo.InvariantCulture));
+        double racePoints = fisCalc != null ? fisCalc.CalculatePoints(rri, false) : -1.0;
+        if (racePoints >= 0)
+          writeElement("Racepoints", racePoints.ToString("F2", CultureInfo.InvariantCulture));
 
         _writer.WriteEndElement(); // AL_result
 
@@ -617,36 +610,5 @@ namespace RaceHorologyLib
     }
 
 
-    static string getGitHash()
-    {
-      try
-      {
-        var process = new Process();
-        process.StartInfo.FileName = "git";
-        process.StartInfo.Arguments = "rev-parse --short HEAD";
-        process.StartInfo.UseShellExecute = false;
-        process.StartInfo.RedirectStandardOutput = true;
-        process.StartInfo.CreateNoWindow = true;
-        process.Start();
-        string hash = process.StandardOutput.ReadToEnd().Trim();
-        process.WaitForExit();
-        if (process.ExitCode == 0 && !string.IsNullOrEmpty(hash))
-          return hash;
-      }
-      catch { }
-
-      try
-      {
-        Assembly assembly = Assembly.GetEntryAssembly() ?? Assembly.GetExecutingAssembly();
-        if (assembly != null)
-        {
-          FileVersionInfo fvi = FileVersionInfo.GetVersionInfo(assembly.Location);
-          return fvi.ProductVersion;
-        }
-      }
-      catch { }
-
-      return null;
-    }
   }
 }
