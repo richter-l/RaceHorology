@@ -52,7 +52,11 @@ namespace RaceHorologyLib
   {
     event ImportTimeEntryEventHandler ImportTimeEntryReceived;
 
-    void DownloadImportTimes();
+    /// <summary>
+    /// Triggers a download/transfer of times from the timing device.
+    /// </summary>
+    /// <param name="run">The race run the times shall be requested for, or null if the device does not support run-specific requests.</param>
+    void DownloadImportTimes(RaceRun run = null);
     EImportTimeFlags SupportedImportTimeFlags();
 
   }
@@ -67,6 +71,7 @@ namespace RaceHorologyLib
     protected TimeSpan? _runTime;
     protected TimeSpan? _startTime;
     protected TimeSpan? _finishTime;
+    protected RunResult.EResultCode? _resultCode;
 
     protected ImportTimeEntry(ImportTimeEntry that)
     {
@@ -74,6 +79,7 @@ namespace RaceHorologyLib
       _runTime = that._runTime;
       _startTime = that._startTime;
       _finishTime = that._finishTime;
+      _resultCode = that._resultCode;
     }
 
     public ImportTimeEntry(uint startNumber, TimeSpan? runTime)
@@ -86,6 +92,11 @@ namespace RaceHorologyLib
       _startNumber = startNumber;
       _startTime = startTime;
       _finishTime = finishTime;
+    }
+    public ImportTimeEntry(uint startNumber, RunResult.EResultCode resultCode)
+    {
+      _startNumber = startNumber;
+      _resultCode = resultCode;
     }
 
     virtual public uint StartNumber
@@ -104,6 +115,9 @@ namespace RaceHorologyLib
 
     public TimeSpan? FinishTime { get { return _finishTime; } }
     public virtual void setFinishTime(TimeSpan value) { if (_finishTime != value) { _finishTime = value; } }
+
+    public RunResult.EResultCode? ResultCode { get { return _resultCode; } }
+    public virtual void setResultCode(RunResult.EResultCode value) { if (_resultCode != value) { _resultCode = value; } }
   }
 
 
@@ -142,6 +156,26 @@ namespace RaceHorologyLib
     public override void setStartTime(TimeSpan value) { if (_startTime != value) { _startTime = value; NotifyPropertyChanged("StartTime"); } }
 
     public override void setFinishTime(TimeSpan value) { if (_finishTime != value) { _finishTime = value; NotifyPropertyChanged("FinishTime"); } }
+
+    public override void setResultCode(RunResult.EResultCode value) { if (_resultCode != value) { _resultCode = value; NotifyPropertyChanged("ResultCode"); NotifyPropertyChanged("Status"); } }
+
+    /// <summary>
+    /// Short display text for a result code (e.g. DNS); empty for normal timed entries.
+    /// </summary>
+    public string Status
+    {
+      get
+      {
+        switch (_resultCode)
+        {
+          case RunResult.EResultCode.NaS: return "NaS";
+          case RunResult.EResultCode.NiZ: return "NiZ";
+          case RunResult.EResultCode.DIS: return "DIS";
+          case RunResult.EResultCode.NQ: return "NQ";
+          default: return "";
+        }
+      }
+    }
 
 
 
@@ -248,6 +282,36 @@ namespace RaceHorologyLib
     /// </summary>
     public int Save(RaceRun raceRun, IEnumerable<ImportTimeEntryWithParticipant> items, bool overwriteAlreadyImportedParticipantAssignment)
     {
+      // Suspend resorting of the affected result views while importing. Otherwise every single
+      // start/finish time set would trigger a full resort of the whole field, which makes the
+      // import extremely slow. The views are resorted once after the last entry has been added.
+      var providersToResume = new List<ViewProvider>();
+      void suspend(ViewProvider vp)
+      {
+        if (vp != null)
+        {
+          vp.SuspendResorting();
+          providersToResume.Add(vp);
+        }
+      }
+
+      suspend(raceRun.GetResultViewProvider());
+      suspend(_race.GetResultViewProvider());
+
+      try
+      {
+        return SaveInternal(raceRun, items, overwriteAlreadyImportedParticipantAssignment);
+      }
+      finally
+      {
+        foreach (var vp in providersToResume)
+          vp.ResumeResorting();
+      }
+    }
+
+
+    private int SaveInternal(RaceRun raceRun, IEnumerable<ImportTimeEntryWithParticipant> items, bool overwriteAlreadyImportedParticipantAssignment)
+    {
       int count = 0;
       foreach( var entry in items)
       {
@@ -289,6 +353,14 @@ namespace RaceHorologyLib
           if (entry.Participant != null)
           {
             raceRun.SetRunTime(entry.Participant, entry.RunTime);
+            didSomething = true;
+          }
+
+        // Non-time results (e.g. DNS) carry a result code instead of a time.
+        if (entry.ResultCode != null)
+          if (entry.Participant != null)
+          {
+            raceRun.SetResultCode(entry.Participant, (RunResult.EResultCode)entry.ResultCode);
             didSomething = true;
           }
 
