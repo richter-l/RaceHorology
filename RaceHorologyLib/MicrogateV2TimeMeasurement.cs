@@ -40,7 +40,7 @@ using WebSocketSharp;
 
 namespace RaceHorologyLib
 {
-  public abstract class MicrogateV2TimeMeasurementBase : ILiveTimeMeasurementDevice, ILiveDateTimeProvider
+  public abstract class MicrogateV2TimeMeasurementBase : ILiveTimeMeasurementDevice, ILiveDateTimeProvider, IImportTime
   {
     public event TimeMeasurementEventHandler TimeMeasurementReceived;
     public event StartnumberSelectedEventHandler StartnumberSelectedReceived;
@@ -121,6 +121,19 @@ namespace RaceHorologyLib
       {
         if (_parser.TimingData != null)
         {
+          // Static responses are triggered by an explicit import request (see DownloadImportTimes)
+          // and shall be forwarded as import time entries, not as live timing data.
+          if (_parser.LineType == MicrogateV2LineParser.ELineType.StaticResponseLine)
+          {
+            ImportTimeEntry importEntry = TransferToImportTimeEntry(_parser.TimingData);
+            if (importEntry != null)
+            {
+              var handle = ImportTimeEntryReceived;
+              handle?.Invoke(this, importEntry);
+            }
+            return;
+          }
+
           UpdateLiveDayTime(_parser.TimingData);
           if (_parser.TimingData.Flag == '0' || _parser.TimingData.Flag == 'a' || _parser.TimingData.Flag == 'A' || _parser.TimingData.Flag == 'Q' || _parser.TimingData.Flag == 'P')
           {
@@ -136,6 +149,35 @@ namespace RaceHorologyLib
       }
       catch (FormatException)
       { }
+    }
+
+
+    /// <summary>
+    /// Converts a parsed static-response line into an import time entry holding a start or finish timestamp.
+    /// The logical channel determines whether the time is a start (000) or finish (255) timestamp.
+    /// </summary>
+    public static ImportTimeEntry TransferToImportTimeEntry(in MicrogateV2LiveTimingData parsedData)
+    {
+      // Non-time results (DNS / disqualified / not qualified) carry no timestamp but a result code.
+      // Mirrors the live-timing mapping in TransferToTimemeasurementData / LiveTimingMeasurement.
+      switch (parsedData.Flag)
+      {
+        case 'P': return new ImportTimeEntry(parsedData.StartNumber, RunResult.EResultCode.NaS); // Did not start
+        case 'A': return new ImportTimeEntry(parsedData.StartNumber, RunResult.EResultCode.DIS); // Disqualified
+        case 'Q': return new ImportTimeEntry(parsedData.StartNumber, RunResult.EResultCode.NQ);  // Not qualified
+        case '0': break; // valid timestamp, handled below
+        default: return null;
+      }
+
+      switch (parsedData.LogicalChannel)
+      {
+        case "000": // Start
+          return new ImportTimeEntry(parsedData.StartNumber, parsedData.Time, null);
+        case "255": // Finish
+          return new ImportTimeEntry(parsedData.StartNumber, null, parsedData.Time);
+        default:
+          return null;
+      }
     }
 
     public static TimeMeasurementEventArgs TransferToTimemeasurementData(in MicrogateV2LiveTimingData parsedData)
@@ -197,11 +239,32 @@ namespace RaceHorologyLib
       return data;
     }
 
-    // Nothing to implement, download is initiated interactively on Microgate device
-    // In a future release, there might be an implementation of a static request to the timing device
-    // importing everything without the need to perform anything on the timing device
-    public EImportTimeFlags SupportedImportTimeFlags() { return EImportTimeFlags.RunTime; }
-    public void DownloadImportTimes() { }
+    // Times are requested from the timing device via a static request (see DownloadImportTimes).
+    // The device answers with static-response lines that are forwarded as import time entries.
+    // The requested times are always start/finish timestamps (never runtimes).
+    public EImportTimeFlags SupportedImportTimeFlags() { return EImportTimeFlags.RemoteDownload | EImportTimeFlags.StartFinishTime; }
+
+    public void DownloadImportTimes(RaceRun run = null)
+    {
+      // The run is selected in the dropdown of the import dialog and handed in here.
+      // Default to the first run if none was provided.
+      uint runNumber = run?.Run ?? 1;
+      sendImportRequest(BuildImportRequest(runNumber));
+    }
+
+    /// <summary>
+    /// Builds the static request asking the timing device to send the timestamps for the given run.
+    /// </summary>
+    public static string BuildImportRequest(uint run)
+    {
+      // \x11 (DC1) starts a static request line. The run is encoded as a zero-padded 3-digit number.
+      return string.Format("R 000000000*251{0:D3}000S\r", run);
+    }
+
+    /// <summary>
+    /// Sends the static import request to the timing device. Implemented by the concrete transport (e.g. serial port).
+    /// </summary>
+    protected virtual void sendImportRequest(string request) { }
 
 
     #region Implementation of ILiveDateTimeProvider
@@ -239,6 +302,8 @@ namespace RaceHorologyLib
 
     System.Threading.Thread _instanceCaller;
     bool _stopRequest;
+
+    private readonly object _writeLock = new object();
 
     private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
 
@@ -447,6 +512,50 @@ namespace RaceHorologyLib
     }
 
 
+    /// <summary>
+    /// Writes the static import request to the serial port. The device answers with static-response lines
+    /// that are read and parsed by the running MainLoop and forwarded as import time entries.
+    /// </summary>
+    protected override void sendImportRequest(string request)
+    {
+      if (string.IsNullOrEmpty(request))
+        return;
+
+      // Serialize against the MainLoop read thread; SerialPort does not allow concurrent
+      // changes to its configuration while a write is in progress.
+      lock (_writeLock)
+      {
+        if (_serialPort == null || !_serialPort.IsOpen)
+        {
+          Logger.Warn("Cannot send import request, serial port not open: {0}", request);
+          return;
+        }
+
+        Handshake previousHandshake = _serialPort.Handshake;
+        int previousWriteTimeout = _serialPort.WriteTimeout;
+        try
+        {
+          Logger.Info("sending import request: {0}", request);
+          // The device opens with RequestToSend handshake to flow-control incoming
+          // timing data; outgoing writes would otherwise block on CTS. Drop the
+          // handshake while we send the request, then restore it.
+          _serialPort.Handshake = Handshake.None;
+          _serialPort.WriteTimeout = 2000;
+          _serialPort.Write(request);
+        }
+        catch (Exception ex)
+        {
+          Logger.Error(ex, "Failed to send import request");
+        }
+        finally
+        {
+          _serialPort.WriteTimeout = previousWriteTimeout;
+          _serialPort.Handshake = previousHandshake;
+        }
+      }
+    }
+
+
     #region Implementation of ILiveTimeMeasurementDeviceDebugInfo
     public event RawMessageReceivedEventHandler RawMessageReceived;
 
@@ -510,6 +619,12 @@ namespace RaceHorologyLib
 
     public MicrogateV2LiveTimingData TimingData { get; private set; }
 
+    /// <summary>
+    /// Type of the most recently parsed line (set whenever TimingData was successfully parsed).
+    /// Used to distinguish static (import) responses from live timing lines.
+    /// </summary>
+    public ELineType LineType { get; private set; }
+
 
     public void Parse(string dataLine)
     {
@@ -529,7 +644,10 @@ namespace RaceHorologyLib
       }
 
       if (timingData != null)
+      {
         TimingData = timingData;
+        LineType = lineType;
+      }
     }
 
     private ELineType parseType(string dataLine)
