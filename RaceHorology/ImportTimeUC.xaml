@@ -64,6 +64,14 @@
             </Style>
           </DataGridTextColumn.ElementStyle>
         </DataGridTextColumn>
+        <DataGridTextColumn local:DataGridUtil.Name="Status" Header="Status" Binding="{Binding Status, Mode=OneWay}">
+          <DataGridTextColumn.ElementStyle>
+            <Style TargetType="TextBlock">
+              <Setter Property="HorizontalAlignment" Value="Center" />
+              <Setter Property="Margin" Value="5,0,5,0" />
+            </Style>
+          </DataGridTextColumn.ElementStyle>
+        </DataGridTextColumn>
       </DataGrid.Columns>
     </DataGrid>
 
