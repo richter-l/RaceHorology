@@ -43,7 +43,11 @@ namespace RaceHorology
 
       if ((importTimeDevice.SupportedImportTimeFlags() & EImportTimeFlags.RemoteDownload) != EImportTimeFlags.None)
       {
-        importTimeDevice.DownloadImportTimes();
+        // Defer the initial download until after the dialog has been shown and rendered.
+        // For serial devices the download writes to the timing device synchronously; doing
+        // so while the window is still being created starves the UI message pump.
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background,
+          new Action(() => importTimeDevice.DownloadImportTimes(getSelectedRun())));
         lblHeader.Content = "Drücke Download um den Transfer erneut zu starten.";
       }
       else
@@ -102,10 +106,15 @@ namespace RaceHorology
 
     }
 
+    private RaceRun getSelectedRun()
+    {
+      return cmbRun.SelectedValue as RaceRun;
+    }
+
     private void btnDownload_Click(object sender, RoutedEventArgs e)
     {
       _importTimeVM.Clear();
-      _importTimeDevice.DownloadImportTimes();
+      _importTimeDevice.DownloadImportTimes(getSelectedRun());
     }
   }
 }
