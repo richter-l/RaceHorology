@@ -285,7 +285,7 @@ namespace RaceHorologyLib
 
     public EImportTimeFlags SupportedImportTimeFlags() { return EImportTimeFlags.RemoteDownload | EImportTimeFlags.StartFinishTime; }
 
-    public void DownloadImportTimes()
+    public void DownloadImportTimes(RaceRun run = null)
     {
       _webClient.GetAsync("timing/results/?action=all_events")
         .ContinueWith((response) =>
