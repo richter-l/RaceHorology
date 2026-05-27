@@ -74,6 +74,59 @@ namespace RaceHorologyLib
     public abstract ViewProvider Clone();
 
 
+    #region Resort suspension
+
+    // While resorting is suspended, change handlers must not re-sort the view on every
+    // single notification (e.g. during a bulk import). Instead they flag that a resort is
+    // pending; ResumeResorting() then performs a single resort to catch up.
+    private int _resortSuspendCount;
+    private bool _resortPending;
+
+    /// <summary>
+    /// Whether resorting is currently suspended. Change handlers should check this and, if true,
+    /// record that a resort is needed via MarkResortPending() instead of resorting immediately.
+    /// </summary>
+    protected bool ResortSuspended { get { return _resortSuspendCount > 0; } }
+
+    /// <summary>
+    /// Records that the view became out of order while resorting was suspended.
+    /// </summary>
+    protected void MarkResortPending() { _resortPending = true; }
+
+    /// <summary>
+    /// Suspends resorting of the view. Must be paired with a call to ResumeResorting().
+    /// Calls may be nested; the view is only resorted once the outermost resume happens.
+    /// </summary>
+    public void SuspendResorting()
+    {
+      _resortSuspendCount++;
+    }
+
+    /// <summary>
+    /// Resumes resorting. When the outermost suspension is lifted and a resort became pending
+    /// in the meantime, the view is resorted exactly once.
+    /// </summary>
+    public void ResumeResorting()
+    {
+      if (_resortSuspendCount == 0)
+        return;
+
+      _resortSuspendCount--;
+      if (_resortSuspendCount == 0 && _resortPending)
+      {
+        _resortPending = false;
+        PerformPendingResort();
+      }
+    }
+
+    /// <summary>
+    /// Performs the resort that was deferred while suspended. Overridden by providers that sort.
+    /// </summary>
+    protected virtual void PerformPendingResort() { }
+
+    #endregion
+
+
     protected void FinalizeInit()
     {
       _view.Source = GetViewSource();
@@ -1185,7 +1238,11 @@ namespace RaceHorologyLib
       if (rrWP != null)
       {
         rrWP.UpdateRunResult(rr);
-        _viewList.Sort(_comparer);
+        // Defer the (expensive) sort while a bulk operation suspended resorting.
+        if (ResortSuspended)
+          MarkResortPending();
+        else
+          _viewList.Sort(_comparer);
       }
       else
       {
@@ -1195,6 +1252,20 @@ namespace RaceHorologyLib
           _viewList.InsertSorted(CreateRunResultWithPosition(rp), _comparer);
       }
 
+      // updatePositions iterates the whole list; skip it while suspended and catch up on resume.
+      if (ResortSuspended)
+        MarkResortPending();
+      else
+        updatePositions();
+    }
+
+
+    protected override void PerformPendingResort()
+    {
+      if (_viewList == null)
+        return;
+
+      _viewList.Sort(_comparer);
       updatePositions();
     }
 
@@ -1499,6 +1570,15 @@ namespace RaceHorologyLib
 
     private void OnRunResultItemChanged(object sender, PropertyChangedEventArgs e)
     {
+      // While suspended (e.g. bulk import), skip the per-notification recompute entirely.
+      // UpdateResultsFor does several O(N) scans; running it per notification is O(N^2).
+      // A single UpdateAll() on resume recomputes every participant once.
+      if (ResortSuspended)
+      {
+        MarkResortPending();
+        return;
+      }
+
       RunResultWithPosition rr = sender as RunResultWithPosition;
 
       if (rr != null)
@@ -1510,6 +1590,10 @@ namespace RaceHorologyLib
 
     private void OnResultListCollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
     {
+      // The PropertyChanged (un)subscriptions below must always happen, even while suspended,
+      // so newly added items are tracked. Only the per-item recompute (UpdateResultsFor) is
+      // deferred to a single UpdateAll() on resume.
+      bool suspended = ResortSuspended;
       bool bSomethingChanged = false;
 
       if (e.OldItems != null)
@@ -1518,7 +1602,7 @@ namespace RaceHorologyLib
         {
           item.PropertyChanged -= OnRunResultItemChanged;
           RunResultWithPosition rr = item as RunResultWithPosition;
-          if (UpdateResultsFor(rr?.Participant))
+          if (!suspended && UpdateResultsFor(rr?.Participant))
             bSomethingChanged = true;
         }
       }
@@ -1529,18 +1613,26 @@ namespace RaceHorologyLib
         {
           item.PropertyChanged += OnRunResultItemChanged;
           RunResultWithPosition rr = item as RunResultWithPosition;
-          if (UpdateResultsFor(rr?.Participant))
+          if (!suspended && UpdateResultsFor(rr?.Participant))
             bSomethingChanged = true;
         }
       }
 
-      if (bSomethingChanged)
+      if (suspended)
+        MarkResortPending();
+      else if (bSomethingChanged)
         ResortResults();
     }
 
 
     private void OnResultListItemChanged(object sender, PropertyChangedEventArgs e)
     {
+      if (ResortSuspended)
+      {
+        MarkResortPending();
+        return;
+      }
+
       if (sender is RunResultWithPosition rr)
         if (UpdateResultsFor(rr?.Participant))
           ResortResults();
@@ -1668,10 +1760,17 @@ namespace RaceHorologyLib
 
     protected virtual void ResortResults()
     {
-      Logger.Debug(System.Reflection.MethodBase.GetCurrentMethod());
-
       if (_viewList == null)
         return;
+
+      // Defer while a bulk operation (e.g. import) suspended resorting.
+      if (ResortSuspended)
+      {
+        MarkResortPending();
+        return;
+      }
+
+      Logger.Debug(System.Reflection.MethodBase.GetCurrentMethod());
 
       _viewList.Sort(_comparer);
       updatePositions<RaceResultItem>(_viewList, _activeGrouping, (item) =>
@@ -1679,6 +1778,13 @@ namespace RaceHorologyLib
         item.JustModified = _appDataModel.JustMeasured(item.Participant.Participant);
       }
       );
+    }
+
+    protected override void PerformPendingResort()
+    {
+      // While suspended the per-notification recompute (UpdateResultsFor) was skipped, so the
+      // race result items are stale. UpdateAll() recomputes every participant once and resorts once.
+      UpdateAll();
     }
 
 
