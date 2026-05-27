@@ -189,6 +189,7 @@
     <Compile Include="IntegrationTests.cs" />
     <Compile Include="LiveTimingFISTest.cs" />
     <Compile Include="LiveTimingRMTest.cs" />
+    <Compile Include="MicrogateV2Test.cs" />
     <Compile Include="PDFReportTest.cs" />
     <Compile Include="PrintCertificateTest.cs" />
     <Compile Include="RaceConfigurationTest.cs" />

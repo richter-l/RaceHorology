@@ -54,7 +54,7 @@ namespace RaceHorologyLibTest
       public event ImportTimeEntryEventHandler ImportTimeEntryReceived;
 
       public EImportTimeFlags SupportedImportTimeFlags() { return 0; }
-      public void DownloadImportTimes()
+      public void DownloadImportTimes(RaceRun run = null)
       {
       }
 
@@ -267,6 +267,114 @@ namespace RaceHorologyLibTest
       Assert.AreEqual(new TimeSpan(8, 2, 0), rr1.GetRunResult(race.GetParticipant(3)).StartTime);
       Assert.AreEqual(new TimeSpan(8, 2, 30), rr1.GetRunResult(race.GetParticipant(3)).FinishTime);
       Assert.AreEqual(new TimeSpan(0, 0, 30), rr1.GetRunResult(race.GetParticipant(3)).Runtime);
+    }
+
+
+    /// <summary>
+    /// After a bulk Save the result view must end up correctly sorted, even though resorting
+    /// was suspended while the individual times were applied.
+    /// </summary>
+    [TestMethod]
+    public void ImportTimeEntryVM_Save_ResortsOnceAndStaysSorted()
+    {
+      TestDataGenerator tg = new TestDataGenerator();
+      tg.createRaceParticipants(3);
+      var race = tg.Model.GetRace(0);
+      var rr1 = race.GetRun(0);
+      var vp = rr1.GetResultViewProvider();
+
+      ImportTimeMock importTimeMock = new ImportTimeMock();
+      ImportTimeEntryVM vm = new ImportTimeEntryVM(race, importTimeMock);
+
+      // Distinct start times (timestamps must be unique), distinct net runtimes:
+      // StNr 1 -> 30s, StNr 2 -> 10s (fastest), StNr 3 -> 20s
+      vm.AddEntry(new ImportTimeEntry(1, new TimeSpan(8, 0, 0), new TimeSpan(8, 0, 30)));
+      vm.AddEntry(new ImportTimeEntry(2, new TimeSpan(8, 1, 0), new TimeSpan(8, 1, 10)));
+      vm.AddEntry(new ImportTimeEntry(3, new TimeSpan(8, 2, 0), new TimeSpan(8, 2, 20)));
+      Assert.AreEqual(3, vm.ImportEntries.Count);
+
+      var save = new List<ImportTimeEntryWithParticipant>
+      {
+        vm.ImportEntries[0],
+        vm.ImportEntries[1],
+        vm.ImportEntries[2],
+      };
+      var count = vm.Save(rr1, save, false);
+      Assert.AreEqual(3, count);
+
+      // Times were applied
+      Assert.AreEqual(new TimeSpan(0, 0, 30), rr1.GetRunResult(race.GetParticipant(1)).Runtime);
+      Assert.AreEqual(new TimeSpan(0, 0, 10), rr1.GetRunResult(race.GetParticipant(2)).Runtime);
+      Assert.AreEqual(new TimeSpan(0, 0, 20), rr1.GetRunResult(race.GetParticipant(3)).Runtime);
+
+      // The view ends up sorted by runtime (fastest first) with correct positions
+      var view = vp.GetView().ViewToList<RunResultWithPosition>();
+      Assert.AreEqual(2U, view[0].StartNumber);
+      Assert.AreEqual(1U, view[0].Position);
+      Assert.AreEqual(3U, view[1].StartNumber);
+      Assert.AreEqual(2U, view[1].Position);
+      Assert.AreEqual(1U, view[2].StartNumber);
+      Assert.AreEqual(3U, view[2].Position);
+    }
+
+
+    /// <summary>
+    /// Suspension is nestable; the deferred resort only happens once the outermost resume occurs.
+    /// </summary>
+    [TestMethod]
+    public void ViewProvider_SuspendResorting_IsNestable()
+    {
+      TestDataGenerator tg = new TestDataGenerator();
+      tg.createRaceParticipants(3);
+      var race = tg.Model.GetRace(0);
+      var rr1 = race.GetRun(0);
+      var vp = rr1.GetResultViewProvider();
+
+      vp.SuspendResorting();
+      vp.SuspendResorting();
+
+      // While suspended, applying a faster time to a higher start number must not yet reorder.
+      rr1.SetRunTime(race.GetParticipant(3), new TimeSpan(0, 0, 5));
+      var viewWhileSuspended = vp.GetView().ViewToList<RunResultWithPosition>();
+      Assert.AreEqual(1U, viewWhileSuspended[0].StartNumber, "view reordered while still suspended");
+
+      vp.ResumeResorting(); // inner resume: still suspended
+      var viewAfterInnerResume = vp.GetView().ViewToList<RunResultWithPosition>();
+      Assert.AreEqual(1U, viewAfterInnerResume[0].StartNumber, "view reordered before outermost resume");
+
+      vp.ResumeResorting(); // outermost resume: resort happens now
+      var viewAfterResume = vp.GetView().ViewToList<RunResultWithPosition>();
+      Assert.AreEqual(3U, viewAfterResume[0].StartNumber);
+      Assert.AreEqual(1U, viewAfterResume[0].Position);
+    }
+
+
+    /// <summary>
+    /// An imported result-code entry (e.g. DNS) must set the result code on the participant's run result.
+    /// </summary>
+    [TestMethod]
+    public void ImportTimeEntryVM_Save_ResultCode_DNS()
+    {
+      TestDataGenerator tg = new TestDataGenerator();
+      tg.createRaceParticipants(3);
+      var race = tg.Model.GetRace(0);
+      var rr1 = race.GetRun(0);
+
+      ImportTimeMock importTimeMock = new ImportTimeMock();
+      ImportTimeEntryVM vm = new ImportTimeEntryVM(race, importTimeMock);
+
+      // StNr 2 did not start
+      vm.AddEntry(new ImportTimeEntry(2, RunResult.EResultCode.NaS));
+      Assert.AreEqual(1, vm.ImportEntries.Count);
+      Assert.AreEqual(RunResult.EResultCode.NaS, vm.ImportEntries[0].ResultCode);
+      Assert.AreEqual("NaS", vm.ImportEntries[0].Status);
+
+      var save = new List<ImportTimeEntryWithParticipant> { vm.ImportEntries[0] };
+      var count = vm.Save(rr1, save, false);
+
+      Assert.AreEqual(1, count);
+      Assert.AreEqual(RunResult.EResultCode.NaS, rr1.GetRunResult(race.GetParticipant(2)).ResultCode);
+      Assert.IsNull(rr1.GetRunResult(race.GetParticipant(2)).Runtime);
     }
   }
 }
